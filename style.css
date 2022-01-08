@@ -1,0 +1,154 @@
+body {
+    margin: 0 auto;
+    font: 600 14px system-ui;
+    color: #1f1f1f;
+}
+
+#files, #fileDownload {
+    margin: 20px auto;
+    width: 500px;
+    padding: 20px;
+    border-radius: 10px;
+    background-color: #e2e2e2;
+}
+
+    #fileDownload > form {
+        display: flex;
+        white-space: nowrap;
+        margin: 0;
+        margin-block-end: 0;
+    }
+
+    #files > :not(:first-child),
+    #fileDownload > :not(:first-child) {
+        margin-top: 10px;
+    }
+
+    #fileDownload > form > :not(:first-child) {
+        margin-left: 10px;
+    }
+
+    #files > :first-child,
+    #fileDownload > :first-child {
+        font-size: 16px;
+    }
+
+    #files > button,
+    #fileDownload input[type="submit"] {
+        margin-left: 50%;
+        transform: translateX(-50%);
+        background-color: #ff0000;
+        color: #ffffff;
+        border-width: 0px;
+        border-radius: 5px;
+        font: inherit;
+        padding-bottom: 5px;
+        line-height: 30px;
+        text-align: center;
+        height: 35px;
+        width: 120px;
+        text-decoration: none;
+    }
+
+    #fileDownload input[type="submit"] {
+        transform: none;
+        margin-left: 10px;
+        height: 37px;
+        border: none;
+        padding-bottom: 3px;
+    }
+
+    #fileDownload:not([connected]) input[type="submit"] {
+        background-color: #11ccaa;
+    }
+
+    #files > button:hover, #fileDownload input[type="submit"]:hover {
+        background-color: #ee1111;
+    
+    }
+
+    #fileDownload:not([connected]) input[type="submit"]:hover {
+        background-color: #11c0aa;
+    }
+
+.empty_files_list {
+    opacity: 0.8;
+    text-align: center;
+}
+
+[files] > .empty_files_list {
+    display: none;
+}
+
+p {
+    margin: 0;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.file_container {
+    background-color: #ffffff;
+    border-radius: 5px;
+    box-sizing: border-box;
+    padding: 5px 15px;
+    height: 37px;
+    line-height: 27px;
+    white-space: nowrap;
+}
+
+#fileDownload input[type="text"] {
+    background-color: #ffffff;
+    border-radius: 5px;
+    border: none;
+    box-sizing: border-box;
+    padding: 5px 15px;
+    height: 37px;
+    line-height: 27px;
+    white-space: nowrap;
+    font: inherit;
+    text-overflow: ellipsis;
+}
+
+#fileDownload .ip {
+    text-align: center;
+    width: 150px;
+}
+
+#fileDownload .filehash {
+    width: 210px;
+}
+
+#fileDownload #progressBar {
+    display: none;
+    height: 10px;
+    width: 100%;
+    background: linear-gradient(90deg, #11ccaa 0%, #ffffff 0%, #ffffff 100%);
+    border-radius: 5px;
+}
+
+#fileDownload[connected] #progressBar {
+    display: block;
+}
+
+/* #fileDownload[connected] .filehash {
+    width: 340px;
+} */
+
+.file_container[empty] {
+    display: none;
+}
+
+    .file_container > .name {
+        width: 80%;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    .file_container > .size {
+        width: 20%;
+        text-align: right;
+    }
+
+    .file_container > input[type="file"] {
+        display: none;
+    }

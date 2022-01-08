@@ -1,0 +1,316 @@
+<html>
+    <head>
+        <title>Main Client Page</title>
+        <link rel="stylesheet" href="style.css"/>
+    </head>
+    <body>
+        <div id="files">
+            <p>Your files</p>
+            <div class="empty_files_list file_container">No Files Found</div>
+            <!-- <div class="file_container" empty>
+                <p class="name">translate.sql</p>
+                <p class="size">5000 Mb</p>
+                <input type="file"/>
+            </div> -->
+            <button onclick="addFile(this)">Upload file</button>
+        </div>
+        <div id="fileDownload">
+            <p>Download file</p>
+            <form onsubmit="downloadFile(this); return false;">
+                <input class="ip" type="text" placeholder="127.0.0.1:8080">
+                <input class="filehash" type="text"
+                placeholder="1b27889448d620dab5ebefb817ad4011c00f9ad13611344d0c976f2485e6f8dc">
+                <input type="submit" value="Download">
+            </form>
+            <div id="progressBar"></div>
+        </div>
+    </body>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="protocol.js"></script>
+    <script>
+        const createEmptyFileContainer = (parentBlock, button = None) => {
+            let container = document.createElement('div');
+            container.className = 'file_container';
+            container.setAttribute('empty', '');
+            let fileName = document.createElement('p');
+            fileName.className = 'name';
+            let fileSize = document.createElement('p');
+            fileSize.className = 'size';
+            let fileHolder = document.createElement('input');
+            fileHolder.setAttribute('type', 'file');
+
+            container.appendChild(fileName);
+            container.appendChild(fileSize);
+            container.appendChild(fileHolder);
+
+            if (button) {
+                return parentBlock.insertBefore(container, button);
+            } else {
+                return parentBlock.appendChild(container);
+            }
+        }
+    </script>
+    <script>
+        const socket = io(document.location.origin);
+        socket.on('connect', () => console.log('connected'));
+        socket.on('connect_error', (error) => alert(error));
+        socket.on('disconnect', () => {
+            for (let ack of Object.values(socket.acks)) {
+                ack(new Uint8Array(0));
+            }
+            console.log('disconnected');
+        });
+        socket.on('data', async (requestBuffer, callback) => {
+            let request;
+
+            try {
+                request = await Packet.fromBuffer(requestBuffer);
+            } catch {}
+            
+            if (request.type == requestType.GET_FILE_METADATA) {
+                if (!files[request.hash]) {
+                    return callback(new Uint8Array(0));
+                }
+
+                callback(await new Packet(
+                    requestType.SEND_FILE_METADATA, request.hash, files[request.hash].metadata
+                ).pack());
+            }
+
+            if (request.type == requestType.GET_PARTITION) {
+                if (!files[request.hash]) {
+                    return callback(new Uint8Array(0));
+                }
+
+                request.optional.fileBuffer = files[request.hash].buffer;
+                callback(await new Packet(requestType.SEND_PARTITION, request.hash, request.optional).pack());
+            }
+        });
+    </script>
+    <script>
+        let files = {};
+
+        const addFileFromBuffer = async (file) => {
+            const filesParentBlock = document.getElementById('files');
+            let fileContainer = filesParentBlock.querySelector('.file_container[empty]');
+
+            if (!fileContainer) {
+                fileContainer = createEmptyFileContainer(
+                    filesParentBlock, filesParentBlock.querySelector('button')
+                );
+            }
+
+            file.hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', file.buffer)));
+            file.hash = file.hash.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
+
+            if (files[file.hash]) {
+                return fileContainer.remove();
+            }
+
+            files[file.hash] = { 
+                metadata: {
+                    fileName: file.name,
+                    fileSize: file.size,
+                    fileType: file.type,
+                    host: new URLSearchParams(document.location.search).get('host')
+                },
+                buffer: file.buffer
+            }
+
+            fileContainer.parentNode.setAttribute('files', '');
+            fileContainer.querySelector('.name').innerHTML = file.name;
+            fileContainer.querySelector('.size').innerHTML = (file.size / 2 ** 20).toFixed(2) + ' Mb';
+            fileContainer.removeAttribute('empty');
+        }
+
+        const addFile = (button) => {
+            const filesParentBlock = button.parentNode;
+            let fileContainer = filesParentBlock.querySelector('.file_container[empty]');
+
+            if (fileContainer) {
+                return fileContainer.querySelector('input[type="file"]').click();
+            }
+            
+            fileContainer = createEmptyFileContainer(filesParentBlock, button);
+
+            const fileHolder = fileContainer.querySelector('input[type="file"]');
+            fileHolder.addEventListener('change', async (event) => {
+                const file = event.target.files[0];
+                const buffer = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = (event) => { resolve(event.target.result); };
+                    reader.onerror = (event) => { reject(event); };
+                    reader.readAsArrayBuffer(file);
+                })
+                .then((result) => { return result; })
+                .catch((event) => { alert(event.target.error); return undefined });
+
+                if (!buffer) {
+                    return fileContainer.remove();
+                }
+
+                file.hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
+                file.hash = file.hash.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
+
+                if (files[file.hash]) {
+                    return event.target.parentNode.remove();
+                }
+
+                files[file.hash] = { 
+                    metadata: {
+                        fileName: file.name,
+                        fileSize: file.size,
+                        fileType: file.type,
+                        host: new URLSearchParams(document.location.search).get('host')
+                    },
+                    buffer
+                }
+
+                fileContainer.parentNode.setAttribute('files', '');
+                fileContainer.querySelector('.name').innerHTML = file.name;
+                fileContainer.querySelector('.size').innerHTML = (file.size / 2 ** 20).toFixed(2) + ' Mb';
+                fileContainer.removeAttribute('empty');
+            });
+
+            fileHolder.click();
+        };
+    </script>
+    <script>
+        let sources = [];
+        let file = {};
+
+        const controlForm = (form, activate) => {
+            if (activate) {
+                form.parentNode.removeAttribute('connected');
+                for (let input of form.querySelectorAll('input')) {
+                    input.removeAttribute('disabled');
+                }
+                form.querySelector('input[type="submit"]').value = 'Download';
+                document.getElementById('progressBar').style.background = '';
+                form.onsubmit = (event) => { event.preventDefault(); downloadFile(event.target); };
+            } else {
+                form.parentNode.setAttribute('connected', '');
+                for (let input of form.querySelectorAll('input')) {
+                    input.setAttribute('disabled', '');
+                }
+                form.querySelector('input[type="submit"]').value = 'Cancel';
+                form.onsubmit = (event) => { 
+                    event.preventDefault();
+                    file = {};
+                    sources = [];
+                    controlForm(event.target, true);
+                };
+            }
+        }
+
+        const downloadPartition = async (partitionNumber) => {
+            if (!file.metadata) return;
+
+            const hash = file.metadata.hash;
+            const host = sources[Math.floor(Math.random() * sources.length)];
+
+            socket.emit(
+                'data',
+                await new Packet(requestType.GET_PARTITION, hash, { partitionNumber, host }).pack(),
+                async (buffer) => {
+                    if (!file.metadata) return;
+                    file.partitions[partitionNumber - 1] = (await Packet.fromBuffer(buffer)).
+                                                            optional?.fileBuffer;
+                    if (!file.partitions[partitionNumber - 1]) {
+                        setTimeout(() => downloadPartition(partitionNumber));
+                    } else {
+                        file.downloaded++;
+                        const progress = file.downloaded / file.partitions.length * 100;
+                        document.getElementById('progressBar').style.background = `
+                            linear-gradient(90deg, #11ccaa ${progress}%, #ffffff ${progress}%, #ffffff 100%)
+                        `;
+                        console.log(`Downloaded fragment ${partitionNumber}/${file.partitions.length}`);
+                        if (file.downloaded == file.partitions.length) {
+                            console.log('Downloaded');
+                            finishDownload();
+                        }
+                    }
+                }
+            );
+        }
+
+        const downloadBatch = async (count, offset) => {
+            if (!file.metadata) {
+                return;
+            }
+
+            if (file.downloaded == offset) {
+                for (let i = offset; i < Math.min(offset + count, file.partitions?.length); i++) {
+                    setTimeout(() => downloadPartition(i + 1));
+                }
+                
+                setTimeout(() => downloadBatch(count, Math.min(offset + count, file.partitions?.length)));
+            } else {
+                setTimeout(() => downloadBatch(count, offset));
+            }
+        };
+
+        const downloadFile = async (form) => {
+            controlForm(form, false);
+
+            const host = form.getElementsByClassName('ip')[0].value;
+            const hash = form.getElementsByClassName('filehash')[0].value;
+
+            sources.push(host);
+
+            await new Promise(async (resolve, reject) =>
+                socket.emit(
+                    'data',
+                    await new Packet(requestType.GET_FILE_METADATA, hash, { ttl: 3, host }).pack(),
+                    async (buffer) => {
+                        file.metadata = await Packet.fromBuffer(buffer);
+                        resolve();
+                    }
+                )
+            );
+
+            form.querySelector('input[type="submit"]').removeAttribute('disabled');
+
+            if (file.metadata.buffer.byteLength == 0) {
+                file = {};
+                return controlForm(form, true);
+            }
+
+            file.partitions = new Array(Math.ceil(file.metadata.optional.fileSize / Packet.partitionLength));
+            file.downloaded = 0;
+
+            setTimeout(() => downloadBatch(2000, 0));
+        };
+
+        const finishDownload = () => {
+            let tempBuffer = new Uint8Array(file.partitions.length * Packet.partitionLength);
+            let offset = 0;
+
+            for (let partition of file.partitions) {
+                tempBuffer.set(partition, offset);
+                offset += Packet.partitionLength;
+            }
+
+            const fileBuffer = tempBuffer.slice(0, file.metadata.optional.fileSize);
+
+            addFileFromBuffer({
+                name: file.metadata.optional.fileName,
+                size: file.metadata.optional.fileSize,
+                type: file.metadata.optional.fileType,
+                buffer: fileBuffer
+            });
+
+            let link = document.createElement('a');
+            link.style.display = 'none';
+            link.href = URL.createObjectURL(new Blob([fileBuffer], { type: file.metadata.optional.fileType }));
+            link.download = file.metadata.optional.fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            file = {};
+            sources = [];
+            controlForm(document.querySelector('div[id="fileDownload"] form'), true);
+        };
+    </script>
+</html>
